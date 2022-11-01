@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
-//use ndarray_linalg::solve::Inverse;
 use rand::prelude::*;
 use rand_distr::Normal;
+use ndarray_inverse::Inverse;
 
 struct Measurement {
     current_position: f64,
@@ -85,8 +85,7 @@ impl Filter {
 
         // Compute Kalman Gain
         let s = self.h.dot(&p_prime).dot(&self.ht) + self.r;
-        let k = p_prime.dot(&self.ht) * (1.0 / &s);
-        //let k = p_prime.dot(&self.ht).dot(&s.inv().unwrap());
+        let k = p_prime.dot(&self.ht).dot(&s.inv().unwrap());
 
         // Estimate new State
         self.x = &x_prime + &k * (z - h(&self.h, &x_prime));

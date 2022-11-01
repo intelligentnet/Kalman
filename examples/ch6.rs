@@ -1,60 +1,6 @@
 use ndarray::prelude::*;
-//use ndarray_linalg::solve::Inverse;
+use ndarray_inverse::Inverse;
 use rand::prelude::*;
-use num_traits::{Float, Zero};
-
-trait Inverse<T: Float> {
-    fn det(&self) -> T;
-    fn inverse(&self) -> Option<Self> where Self: Sized;
-}
-
-impl<T: Float + std::fmt::Debug> Inverse<T> for Array2<T> {
-    fn det(&self) -> T {
-        match self.shape() {
-            [2, 2] => {
-                self[(0, 0)] * self[(1, 1)] - self[(1, 0)] * self[(0, 1)]
-            }
-            [3, 3] => {
-                self[(0, 0)] * (self[(1, 1)] * self[(2, 2)] - self[(2, 1)] * self[(1, 2)]) -
-                self[(0, 1)] * (self[(1, 0)] * self[(2, 2)] - self[(1, 2)] * self[(2, 0)]) +
-                self[(0, 2)] * (self[(1, 0)] * self[(2, 1)] - self[(1, 1)] * self[(2, 0)])
-            }
-            _ => Zero::zero()
-        }
-    }
-
-    fn inverse(&self) -> Option<Self> {
-        let det = self.det();
-        if det != Zero::zero() {
-            let recip = det.recip();
-
-            match self.shape() {
-                [2, 2] => {
-                    Some(array![
-                        [self[(1, 1)] * recip, -self[(0, 1)] * recip],
-                        [-self[(1, 0)] * recip, self[(0, 0)] * recip],
-                    ])
-                }
-                [3, 3] => {
-                    let mut res = Array2::<T>::zeros((3, 3));
-                    res[(0, 0)] = (self[(1, 1)] * self[(2, 2)] - self[(2, 1)] * self[(1, 2)]) * recip;
-                    res[(0, 1)] = (self[(0, 2)] * self[(2, 1)] - self[(0, 1)] * self[(2, 2)]) * recip;
-                    res[(0, 2)] = (self[(0, 1)] * self[(1, 2)] - self[(0, 2)] * self[(1, 1)]) * recip;
-                    res[(1, 0)] = (self[(1, 2)] * self[(2, 0)] - self[(1, 0)] * self[(2, 2)]) * recip;
-                    res[(1, 1)] = (self[(0, 0)] * self[(2, 2)] - self[(0, 2)] * self[(2, 0)]) * recip;
-                    res[(1, 2)] = (self[(1, 0)] * self[(0, 2)] - self[(0, 0)] * self[(1, 2)]) * recip;
-                    res[(2, 0)] = (self[(1, 0)] * self[(2, 1)] - self[(2, 0)] * self[(1, 1)]) * recip;
-                    res[(2, 1)] = (self[(2, 0)] * self[(0, 1)] - self[(0, 0)] * self[(2, 1)]) * recip;
-                    res[(2, 2)] = (self[(0, 0)] * self[(1, 1)] - self[(1, 0)] * self[(0, 1)]) * recip;
-                    Some(res)
-                }
-                _ => None
-            }
-        } else {
-            None
-        }
-    }
-}
 
 #[derive(Debug)]
 struct Measurement {
@@ -119,11 +65,11 @@ impl Measurement {
         self.r = self.t_r + temp_sig_r;
         self.b = self.t_b + temp_sig_b;
 
-        self.z[[0,0]] = self.r;
-        self.z[[1,0]] = self.b;
+        self.z[[0, 0]] = self.r;
+        self.z[[1, 0]] = self.b;
 
-        self.cov[[0,0]] = temp_sig_r * temp_sig_r;
-        self.cov[[1,1]] = temp_sig_b * temp_sig_b;
+        self.cov[[0, 0]] = temp_sig_r * temp_sig_r;
+        self.cov[[1, 1]] = temp_sig_b * temp_sig_b;
     }
 }
 
@@ -261,7 +207,7 @@ struct Filter {
     q: Array2<f64>,
     // k is internal
 }
- 
+
 impl Filter {
     fn filter(&mut self, m: &mut Measurement) -> Array2<f64> {
         // Predict mean covariance forward
@@ -270,8 +216,7 @@ impl Filter {
 
         // Compute Kalman Gain
         let s = self.h.dot(&p_prime).dot(&self.h.t()) + &self.r;
-        //let k = p_prime.dot(&self.h.t()).dot(&s.inv().unwrap());
-        let k = p_prime.dot(&self.h.t()).dot(&s.inverse().unwrap());
+        let k = p_prime.dot(&self.h.t()).dot(&s.inv().unwrap());
         // Estimate new State
         let h = self.h(m, &x_prime);
         self.x = &x_prime + &k.dot(&(&m.z - &h));
@@ -359,8 +304,18 @@ fn main() {
     simple_plot::plot!("Actual Range vs Measured Range", actual_r, est_r);
     simple_plot::plot!("Actual Azimuth vs Measured Azimuth", actual_b, est_b);
     simple_plot::plot!("Velocity Estimate On Each Measurement Update", x_vel, y_vel);
-    simple_plot::plot!("X Position Estimate Error Containment", ex, e_x_3sig, ne_x_3sig);
-    simple_plot::plot!("Y Position Estimate Error Containment", ey, e_y_3sig, ne_y_3sig);
+    simple_plot::plot!(
+        "X Position Estimate Error Containment",
+        ex,
+        e_x_3sig,
+        ne_x_3sig
+    );
+    simple_plot::plot!(
+        "Y Position Estimate Error Containment",
+        ey,
+        e_y_3sig,
+        ne_y_3sig
+    );
     // Other useful debugging and understanding plots
     //simple_plot::plot!("Cartesian position data", x_pos, y_pos);
     //simple_plot::plot!("Position Error 3 Sigma", e_x_3sig, e_y_3sig);

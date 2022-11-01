@@ -2,7 +2,7 @@
 Available here : https://thekalmanfilter.com/kalman-filter-made-easy-ebook/
 
 This repository currently contains Chapter 5 and Chapter 6 code. It was created so I could consolidate my understanding of Kalman filters as I believe they
-can be an important ingredient in Reinforcement Learning in continuus domains.
+can be an important ingredient in Reinforcement Learning in continous domains.
 
 To install Rust see http:://rustup.rs
 
