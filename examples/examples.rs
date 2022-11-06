@@ -127,22 +127,24 @@ fn model_select(model: &str, n: usize) -> Vec<Array1<f64>> {
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mut num_steps = 10;
+    let mut scale: f64 = 1.0;
     let mut model = "line";
     // Unpack args
     args.iter().for_each(|s| match s.as_str() {
         "line" | "sine" | "parabola" | "bitcoin" => model = s,
-        s => num_steps = if s.starts_with("n=") {
-            s[2 ..].parse().unwrap()
-        } else {
-            num_steps
-        }});
-    println!("Model {} for {} steps", model, num_steps);
+        s => if s.starts_with("n=") {
+            num_steps = s[2 ..].parse().unwrap()
+        } else if s.starts_with("scale=") {
+            scale = s[6 ..].parse().unwrap();
+        }
+        });
+    println!("Model {} for {} steps, scaled by {}", model, num_steps, scale);
 
     let ground_truth_states = model_select(model, num_steps);
 
     // Initialse motion Process Noise
-    let x_motion_stdev = 0.1;
-    let y_motion_stdev = 0.1;
+    let x_motion_stdev = 0.1 * scale;
+    let y_motion_stdev = 0.1 * scale;
     let mq = array![[x_motion_stdev, 0.0], [0.0, y_motion_stdev]];
 
     let motion_states: Vec<Array1<f64>> = if model == "bitcoin" {
@@ -153,8 +155,8 @@ fn main() {
     };
 
     // Initialse Measurement noise
-    let x_measure_stddev = 0.25;
-    let y_measure_stddev = 0.25;
+    let x_measure_stddev = 0.25 * scale;
+    let y_measure_stddev = 0.25 * scale;
     let mr = array![[x_measure_stddev, 0.0], [0.0, y_measure_stddev]];
 
     let measured_states: Vec<Array1<f64>> = if model == "bitcoin" {
@@ -193,7 +195,7 @@ fn main() {
     plotter(&mut plot, "Filtered Values", &filtered_states, true);
 
     plot.show();
-}
+ 
     // Performance timer
     /*
     let mut _filtered_states: Vec<Array1<f64>> = filtered_states;
