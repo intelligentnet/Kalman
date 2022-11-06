@@ -1,6 +1,9 @@
 use ndarray::prelude::*;
 use ndarray_inverse::Inverse;
 use rand::prelude::*;
+extern crate plotly;
+use plotly::common::Mode;
+use plotly::{Plot, Scatter};
 
 #[derive(Debug)]
 struct Measurement {
@@ -11,7 +14,7 @@ struct Measurement {
     t_b: f64,
     r: f64,
     b: f64,
-    z: Array2<f64>,
+    mz: Array2<f64>,
 }
 
 impl Measurement {
@@ -25,7 +28,7 @@ impl Measurement {
     const X_VEL: f64 = 22.0;
     const Y_VEL: f64 = 0.0;
 
-    fn new() -> Measurement {
+    fn new() -> Self {
         Measurement {
             x: 2900.0,
             y: 2900.0,
@@ -34,7 +37,7 @@ impl Measurement {
             t_b: 0.0,
             r: 0.0,
             b: 0.0,
-            z: array![[0.0], [0.0]],
+            mz: array![[0.0], [0.0]],
         }
     }
 
@@ -47,8 +50,8 @@ impl Measurement {
         // Compute the sum of the squares of x and y as an intermediate step
         // before computing the range and storing it off
         self.t_r = (self.x * self.x + self.y * self.y).sqrt();
-        // Compute the azimuth (or bearing) with the arctan2 function and convert
-        // it to degrees. Then store this azimuth data
+        // Compute the azimuth (or bearing) with the arctan2 function and
+        // convert it to degrees. Then store this azimuth data
         self.t_b = self.x.atan2(self.y) * Measurement::PI2;
 
         // Compute the error for each measurement
@@ -65,28 +68,41 @@ impl Measurement {
         self.r = self.t_r + temp_sig_r;
         self.b = self.t_b + temp_sig_b;
 
-        self.z[[0, 0]] = self.r;
-        self.z[[1, 0]] = self.b;
+        self.mz[[0, 0]] = self.r;
+        self.mz[[1, 0]] = self.b;
 
         self.cov[[0, 0]] = temp_sig_r * temp_sig_r;
         self.cov[[1, 1]] = temp_sig_b * temp_sig_b;
     }
 }
 
+#[derive(Debug)]
+struct Filter {
+    mx: Array2<f64>,
+    mp: Array2<f64>,
+    // mz is a Measurement so input only
+    ma: Array2<f64>,
+    mb: Array2<f64>,
+    mh: Array2<f64>,
+    mr: Array2<f64>,
+    mq: Array2<f64>,
+    // mk is internal
+}
+
 trait FilterNew {
-    fn new() -> Filter;
+    fn new() -> Self;
 }
 
 impl FilterNew for Filter {
-    fn new() -> Filter {
+    fn new() -> Self {
         Filter {
-            x: Array2::<f64>::zeros((4, 1)),
-            p: Array2::<f64>::zeros((4, 4)),
-            a: Array2::<f64>::eye(4),
-            b: Array2::<f64>::zeros((4, 1)),
-            h: Array2::<f64>::zeros((2, 4)),
-            r: Array2::<f64>::zeros((2, 2)),
-            q: Array2::<f64>::zeros((4, 4)),
+            mx: Array2::<f64>::zeros((4, 1)),
+            mp: Array2::<f64>::zeros((4, 4)),
+            ma: Array2::<f64>::eye(4),
+            mb: Array2::<f64>::zeros((4, 1)),
+            mh: Array2::<f64>::zeros((2, 4)),
+            mr: Array2::<f64>::zeros((2, 2)),
+            mq: Array2::<f64>::zeros((4, 4)),
         }
     }
 }
@@ -99,11 +115,11 @@ trait FilterLinearFunctions {
 
 impl FilterLinearFunctions for Filter {
     fn f(&mut self) -> Array2<f64> {
-        self.a.dot(&self.x)
+        self.ma.dot(&self.mx)
     }
 
     fn h(&mut self, x_prime: &Array2<f64>) -> Array2<f64> {
-        self.h.dot(x_prime)
+        self.mh.dot(x_prime)
     }
 }
 */
@@ -116,17 +132,17 @@ trait FilterFunctions {
 impl FilterFunctions for Filter {
     fn f(&mut self, m: &mut Measurement) -> Array2<f64> {
         // Form state to measurement transition matrix
-        let x_prime = self.a.dot(&self.x);
+        let x_prime = self.ma.dot(&self.mx);
         let x = x_prime[[0, 0]];
         let y = x_prime[[1, 0]];
         let den = x * x + y * y;
         let densq = den.sqrt();
-        self.h = array![
+        self.mh = array![
             [x / densq, y / densq, 0.0, 0.0],
             [y / den, -x / den, 0.0, 0.0]
         ];
         // Measurement covariance matrix
-        self.r = m.cov.to_owned();
+        self.mr = m.cov.to_owned();
 
         x_prime
     }
@@ -155,14 +171,14 @@ impl FilterInit for Filter {
         // y = r*cos(b)
         let temp_y = m.r * (m.b * std::f64::consts::PI / 180.0).cos();
         // State vector - initialize position values
-        self.x = array![[temp_x], [temp_y], [0.0], [0.0]];
+        self.mx = array![[temp_x], [temp_y], [0.0], [0.0]];
         // State transistion matrix - linear extrapolation assuming constant velocity
-        self.a[[0, 2]] = Measurement::DT;
-        self.a[[1, 3]] = Measurement::DT;
+        self.ma[[0, 2]] = Measurement::DT;
+        self.ma[[1, 3]] = Measurement::DT;
         // Measurement covariance matrix
-        self.r = m.cov.to_owned();
+        self.mr = m.cov.to_owned();
 
-        return Array2::zeros((4, 2));
+        Array2::zeros((4, 2))
     }
 
     fn second(&mut self, m: &mut Measurement) -> Array2<f64> {
@@ -172,58 +188,47 @@ impl FilterInit for Filter {
         // y = r*cos(b)
         let temp_y = m.r * (m.b * std::f64::consts::PI / 180.0).cos();
         // State vector - initialize position values
-        self.x = array![
+        self.mx = array![
             [temp_x],
             [temp_y],
-            [(temp_x - self.x[[0, 0]]) / Measurement::DT],
-            [(temp_y - self.x[[1, 0]]) / Measurement::DT]
+            [(temp_x - self.mx[[0, 0]]) / Measurement::DT],
+            [(temp_y - self.mx[[1, 0]]) / Measurement::DT]
         ];
-        // State covariance matrix - initialized to zero for first update
-        self.p[[0, 0]] = 100.0;
-        self.p[[1, 1]] = 100.0;
-        self.p[[2, 2]] = 250.0;
-        self.p[[3, 3]] = 250.0;
+        // State covariance matrix
+        self.mp[[0, 0]] = 100.0;
+        self.mp[[1, 1]] = 100.0;
+        self.mp[[2, 2]] = 250.0;
+        self.mp[[3, 3]] = 250.0;
         // Measurement covariance matrix
-        self.r = m.cov.to_owned();
+        self.mr = m.cov.to_owned();
         // System error matrix - initialized to zero matrix for first update
-        self.q[[0, 0]] = 20.0;
-        self.q[[1, 1]] = 20.0;
-        self.q[[2, 2]] = 4.0;
-        self.q[[3, 3]] = 4.0;
+        self.mq[[0, 0]] = 20.0;
+        self.mq[[1, 1]] = 20.0;
+        self.mq[[2, 2]] = 4.0;
+        self.mq[[3, 3]] = 4.0;
 
-        return Array2::zeros((4, 2));
+        Array2::zeros((4, 2))
     }
-}
-
-#[derive(Debug)]
-struct Filter {
-    x: Array2<f64>,
-    p: Array2<f64>,
-    // z is a Measurement so input only
-    a: Array2<f64>,
-    b: Array2<f64>,
-    h: Array2<f64>,
-    r: Array2<f64>,
-    q: Array2<f64>,
-    // k is internal
 }
 
 impl Filter {
     fn filter(&mut self, m: &mut Measurement) -> Array2<f64> {
         // Predict mean covariance forward
-        let x_prime = self.f(m) + &self.b;
-        let p_prime = self.a.dot(&self.p).dot(&self.a.t()) + &self.q;
+        let x_prime = self.f(m) + &self.mb;
+        let p_prime = self.ma.dot(&self.mp).dot(&self.ma.t()) + &self.mq;
 
+        // CalculateResiduals
+        let h_res = self.h(m, &x_prime);    // Extra var to help borrow checker!
+        let residual_mean = &m.mz - &h_res;
+        let residual_cov = self.mh.dot(&p_prime).dot(&self.mh.t()) + &self.mr;
         // Compute Kalman Gain
-        let s = self.h.dot(&p_prime).dot(&self.h.t()) + &self.r;
-        let k = p_prime.dot(&self.h.t()).dot(&s.inv().unwrap());
+        let mk = p_prime.dot(&self.mh.t()).dot(&residual_cov.inv().unwrap());
         // Estimate new State
-        let h = self.h(m, &x_prime);
-        self.x = &x_prime + &k.dot(&(&m.z - &h));
+        self.mx = &x_prime + &mk.dot(&residual_mean);
         // Estimate new Covariance
-        self.p = &p_prime - k.dot(&self.h).dot(&p_prime);
+        self.mp = &p_prime - mk.dot(&self.mh).dot(&p_prime);
 
-        k
+        mk
     }
 }
 
@@ -244,19 +249,19 @@ struct Measure {
 }
 
 impl Measure {
-    fn new(m: &mut Measurement, filt: &mut Filter, step: u32) -> Measure {
+    fn new(m: &mut Measurement, filt: &mut Filter, step: u32) -> Self {
         m.get();
-        let k = match step {
+        let mk = match step {
             0 => filt.first(m),
             1 => filt.second(m),
             _ => filt.filter(m),
         };
 
-        let est_pos = array![filt.x[[0, 0]], filt.x[[1, 0]]];
-        let est_vel = array![filt.x[[2, 0]], filt.x[[3, 0]]];
-        let pos_sigma = array![filt.p[[0, 0]].sqrt(), filt.p[[1, 1]].sqrt()];
-        let pos_gain = array![k[[0, 0]], k[[1, 0]]];
-        let vel_gain = array![k[[2, 0]], k[[3, 0]]];
+        let est_pos = array![filt.mx[[0, 0]], filt.mx[[1, 0]]];
+        let est_vel = array![filt.mx[[2, 0]], filt.mx[[3, 0]]];
+        let pos_sigma = array![filt.mp[[0, 0]].sqrt(), filt.mp[[1, 1]].sqrt()];
+        let pos_gain = array![mk[[0, 0]], mk[[1, 0]]];
+        let vel_gain = array![mk[[2, 0]], mk[[3, 0]]];
 
         Measure {
             t_r: m.t_r,
@@ -282,24 +287,24 @@ fn main() {
         .map(|k| Measure::new(&mut measurement, &mut filter, k))
         .collect();
     // get loads of data out for plotting
-    let ex: Vec<f64> = m.iter().map(|i| i.est_pos[0] - i.x).collect();
-    let ey: Vec<f64> = m.iter().map(|i| i.est_pos[1] - i.y).collect();
-    let x_pos: Vec<f64> = m.iter().map(|i| i.est_pos[0]).collect();
-    let y_pos: Vec<f64> = m.iter().map(|i| i.est_pos[1]).collect();
-    let x_vel: Vec<f64> = m.iter().map(|i| i.est_vel[0]).collect();
-    let y_vel: Vec<f64> = m.iter().map(|i| i.est_vel[1]).collect();
-    let actual_r: Vec<f64> = m.iter().map(|i| i.t_r).collect();
-    let actual_b: Vec<f64> = m.iter().map(|i| i.t_b).collect();
-    let est_r: Vec<f64> = m.iter().map(|i| i.r).collect();
-    let est_b: Vec<f64> = m.iter().map(|i| i.b).collect();
-    let x_pos_gain: Vec<f64> = m.iter().map(|i| i.pos_gain[0]).collect();
-    let y_pos_gain: Vec<f64> = m.iter().map(|i| i.pos_gain[1]).collect();
-    let x_vel_gain: Vec<f64> = m.iter().map(|i| i.vel_gain[0]).collect();
-    let y_vel_gain: Vec<f64> = m.iter().map(|i| i.vel_gain[1]).collect();
-    let e_x_3sig: Vec<f64> = m.iter().map(|i| 3.0 * i.pos_sigma[0]).collect();
-    let e_y_3sig: Vec<f64> = m.iter().map(|i| 3.0 * i.pos_sigma[1]).collect();
-    let ne_x_3sig: Vec<f64> = m.iter().map(|i| 3.0 * -i.pos_sigma[0]).collect();
-    let ne_y_3sig: Vec<f64> = m.iter().map(|i| 3.0 * -i.pos_sigma[1]).collect();
+    let ex = m.iter().map(|i| i.est_pos[0] - i.x);
+    let ey = m.iter().map(|i| i.est_pos[1] - i.y);
+    let x_pos = m.iter().map(|i| i.est_pos[0]);
+    let y_pos = m.iter().map(|i| i.est_pos[1]);
+    let x_vel = m.iter().map(|i| i.est_vel[0]);
+    let y_vel = m.iter().map(|i| i.est_vel[1]);
+    let actual_r = m.iter().map(|i| i.t_r);
+    let actual_b = m.iter().map(|i| i.t_b);
+    let est_r = m.iter().map(|i| i.r);
+    let est_b = m.iter().map(|i| i.b);
+    let x_pos_gain = m.iter().map(|i| i.pos_gain[0]);
+    let y_pos_gain = m.iter().map(|i| i.pos_gain[1]);
+    let x_vel_gain = m.iter().map(|i| i.vel_gain[0]);
+    let y_vel_gain = m.iter().map(|i| i.vel_gain[1]);
+    let e_x_3sig = m.iter().map(|i| 3.0 * i.pos_sigma[0]);
+    let e_y_3sig = m.iter().map(|i| 3.0 * i.pos_sigma[1]);
+    let ne_x_3sig = m.iter().map(|i| 3.0 * -i.pos_sigma[0]);
+    let ne_y_3sig = m.iter().map(|i| 3.0 * -i.pos_sigma[1]);
 
     simple_plot::plot!("Actual Range vs Measured Range", actual_r, est_r);
     simple_plot::plot!("Actual Azimuth vs Measured Azimuth", actual_b, est_b);

@@ -145,11 +145,11 @@ fn main() {
     let m: Vec<Measure> = (1..300)
         .map(|k| Measure::new(&mut measurement, &mut filter, k))
         .collect();
-    let pos: Vec<f64> = m.iter().map(|i| i.pos).collect();
-    let est_diff_pos: Vec<f64> = m.iter().map(|i| i.est_dif_pos).collect();
-    let est_vel: Vec<f64> = m.iter().map(|i| i.est_vel).collect();
-    let pos_gain: Vec<f64> = m.iter().map(|i| i.pos_gain).collect();
-    let vel_gain: Vec<f64> = m.iter().map(|i| i.vel_gain).collect();
+    let pos = m.iter().map(|i| i.pos);
+    let est_diff_pos = m.iter().map(|i| i.est_dif_pos);
+    let est_vel = m.iter().map(|i| i.est_vel);
+    let pos_gain = m.iter().map(|i| i.pos_gain);
+    let vel_gain = m.iter().map(|i| i.vel_gain);
 
     simple_plot::plot!("Actual position data", pos);
     simple_plot::plot!(

@@ -2,14 +2,19 @@
 name = "kalman"
 version = "0.1.0"
 edition = "2021"
+authors = ["Chris Dipple <chris@intelligent-net.co.uk>"]
+license = "MIT OR Apache-2.0"
+description = "Pure Rust Inverse and Determinant trait for ndarray Array2"
+homepage = "https://github.com/intelligentnet/ndarray-inverse"
+repository = "https://github.com/intelligentnet/kalman"
+keywords = ["Kalman", "filter", "quadratic estimation",  "LQE"]
+categories = ["mathematics", "science"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#csv = "1.1.6"
-#fast-float = "0.2.0"
 ndarray = "*"
-#plotly = "0.8.1"
+plotly = "*"
 rand = "0.8.5"
 rand_distr = "0.4.3"
 simple-plot = "*"
