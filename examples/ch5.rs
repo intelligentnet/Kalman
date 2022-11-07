@@ -2,6 +2,11 @@ use ndarray::prelude::*;
 use rand::prelude::*;
 use rand_distr::Normal;
 use ndarray_inverse::Inverse;
+use plotly::{
+        common::{Mode, Title},
+        layout::Layout,
+        Plot, Scatter,
+    };
 
 struct Measurement {
     current_position: f64,
@@ -145,17 +150,41 @@ fn main() {
     let m: Vec<Measure> = (1..300)
         .map(|k| Measure::new(&mut measurement, &mut filter, k))
         .collect();
-    let pos = m.iter().map(|i| i.pos);
-    let est_diff_pos = m.iter().map(|i| i.est_dif_pos);
-    let est_vel = m.iter().map(|i| i.est_vel);
-    let pos_gain = m.iter().map(|i| i.pos_gain);
-    let vel_gain = m.iter().map(|i| i.vel_gain);
+    let pos: Vec<f64> = m.iter().map(|i| i.pos).collect();
+    let est_pos: Vec<f64> = m.iter().map(|i| i.est_pos).collect();
+    let dif_pos: Vec<f64> = m.iter().map(|i| i.dif_pos).collect();
+    let est_dif_pos: Vec<f64> = m.iter().map(|i| i.est_dif_pos).collect();
+    //let pos_bound3sigma: Vec<f64> = m.iter().map(|i| i.pos_bound3sigma).collect();
+    let est_vel: Vec<f64> = m.iter().map(|i| i.est_vel).collect();
+    let pos_gain: Vec<f64> = m.iter().map(|i| i.pos_gain).collect();
+    let vel_gain: Vec<f64> = m.iter().map(|i| i.vel_gain).collect();
 
-    simple_plot::plot!("Actual position data", pos);
-    simple_plot::plot!(
-        "Estimated Position difference and velocity",
-        est_diff_pos,
-        est_vel
-    );
-    simple_plot::plot!("Kalman Gains", pos_gain, vel_gain);
+    // Plot results
+    let mut plot = Plot::new();
+    plotter(&mut plot, "Actual Data", "Position", &pos, false);
+    plotter(&mut plot, "Actual Data", "Estimate", &est_pos, true);
+    plot.show();
+
+    let mut plot = Plot::new();
+    plotter(&mut plot, "Estimated Differences", "Velocity", &est_vel, false);
+    //plot.show();
+
+    //let mut plot = Plot::new();
+    plotter(&mut plot, "Estimated Differences", "Estimate Dif", &est_dif_pos, false);
+    plotter(&mut plot, "Estimated Differences", "Measured Dif", &dif_pos, true);
+    plot.show();
+
+    let mut plot = Plot::new();
+    plotter(&mut plot, "Kalman Gains", "Position", &pos_gain, false);
+    plotter(&mut plot, "Kalman Gains", "Velocity", &vel_gain, false);
+    plot.show();
+}
+
+fn plotter(plot: &mut Plot, title: &str, label: &str, ya: &Vec<f64>, scatter: bool) {
+    let xa: Vec<f64> = (0..ya.len()).map(|i| i as f64).collect();
+    let trace = Scatter::new(xa.to_vec(), ya.to_vec())
+        .name(label)
+        .mode(if scatter { Mode::Markers } else { Mode::Lines });
+    plot.add_trace(trace);
+    plot.set_layout(Layout::new().title(Title::new(title)));
 }

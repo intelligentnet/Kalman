@@ -2,8 +2,11 @@ use ndarray::prelude::*;
 use ndarray_inverse::Inverse;
 use rand::prelude::*;
 extern crate plotly;
-use plotly::common::Mode;
-use plotly::{Plot, Scatter};
+use plotly::{
+        common::{Mode, Title},
+        layout::Layout,
+        Plot, Scatter,
+    };
 
 #[derive(Debug)]
 struct Measurement {
@@ -287,45 +290,58 @@ fn main() {
         .map(|k| Measure::new(&mut measurement, &mut filter, k))
         .collect();
     // get loads of data out for plotting
-    let ex = m.iter().map(|i| i.est_pos[0] - i.x);
-    let ey = m.iter().map(|i| i.est_pos[1] - i.y);
-    let x_pos = m.iter().map(|i| i.est_pos[0]);
-    let y_pos = m.iter().map(|i| i.est_pos[1]);
-    let x_vel = m.iter().map(|i| i.est_vel[0]);
-    let y_vel = m.iter().map(|i| i.est_vel[1]);
-    let actual_r = m.iter().map(|i| i.t_r);
-    let actual_b = m.iter().map(|i| i.t_b);
-    let est_r = m.iter().map(|i| i.r);
-    let est_b = m.iter().map(|i| i.b);
-    let x_pos_gain = m.iter().map(|i| i.pos_gain[0]);
-    let y_pos_gain = m.iter().map(|i| i.pos_gain[1]);
-    let x_vel_gain = m.iter().map(|i| i.vel_gain[0]);
-    let y_vel_gain = m.iter().map(|i| i.vel_gain[1]);
-    let e_x_3sig = m.iter().map(|i| 3.0 * i.pos_sigma[0]);
-    let e_y_3sig = m.iter().map(|i| 3.0 * i.pos_sigma[1]);
-    let ne_x_3sig = m.iter().map(|i| 3.0 * -i.pos_sigma[0]);
-    let ne_y_3sig = m.iter().map(|i| 3.0 * -i.pos_sigma[1]);
+    let ex: Vec<f64> = m.iter().map(|i| i.est_pos[0] - i.x).collect();
+    let ey: Vec<f64> = m.iter().map(|i| i.est_pos[1] - i.y).collect();
+    let x_pos: Vec<f64> = m.iter().map(|i| i.est_pos[0]).collect();
+    let y_pos: Vec<f64> = m.iter().map(|i| i.est_pos[1]).collect();
+    let x_vel: Vec<f64> = m.iter().map(|i| i.est_vel[0]).collect();
+    let y_vel: Vec<f64> = m.iter().map(|i| i.est_vel[1]).collect();
+    let actual_r: Vec<f64> = m.iter().map(|i| i.t_r).collect();
+    let actual_b: Vec<f64> = m.iter().map(|i| i.t_b).collect();
+    let est_r: Vec<f64> = m.iter().map(|i| i.r).collect();
+    let est_b: Vec<f64> = m.iter().map(|i| i.b).collect();
+    let x_pos_gain: Vec<f64> = m.iter().map(|i| i.pos_gain[0]).collect();
+    let y_pos_gain: Vec<f64> = m.iter().map(|i| i.pos_gain[1]).collect();
+    let x_vel_gain: Vec<f64> = m.iter().map(|i| i.vel_gain[0]).collect();
+    let y_vel_gain: Vec<f64> = m.iter().map(|i| i.vel_gain[1]).collect();
+    let e_x_3sig: Vec<f64> = m.iter().map(|i| 3.0 * i.pos_sigma[0]).collect();
+    let e_y_3sig: Vec<f64> = m.iter().map(|i| 3.0 * i.pos_sigma[1]).collect();
+    let ne_x_3sig: Vec<f64> = m.iter().map(|i| 3.0 * -i.pos_sigma[0]).collect();
+    let ne_y_3sig: Vec<f64> = m.iter().map(|i| 3.0 * -i.pos_sigma[1]).collect();
 
-    simple_plot::plot!("Actual Range vs Measured Range", actual_r, est_r);
-    simple_plot::plot!("Actual Azimuth vs Measured Azimuth", actual_b, est_b);
-    simple_plot::plot!("Velocity Estimate On Each Measurement Update", x_vel, y_vel);
-    simple_plot::plot!(
-        "X Position Estimate Error Containment",
-        ex,
-        e_x_3sig,
-        ne_x_3sig
-    );
-    simple_plot::plot!(
-        "Y Position Estimate Error Containment",
-        ey,
-        e_y_3sig,
-        ne_y_3sig
-    );
-    // Other useful debugging and understanding plots
-    //simple_plot::plot!("Cartesian position data", x_pos, y_pos);
-    //simple_plot::plot!("Position Error 3 Sigma", e_x_3sig, e_y_3sig);
-    //simple_plot::plot!("Position", ex, ey);
-    //simple_plot::plot!("X Kalman Gains", x_pos_gain, x_vel_gain);
-    //simple_plot::plot!("Y Kalman Gains", y_pos_gain, y_vel_gain);
-    //simple_plot::plot!("Gains", x_pos_gain, x_vel_gain, y_pos_gain, y_vel_gain);
+    let mut plot = Plot::new();
+    plotter(&mut plot, "Ranges", "Actual", &actual_r, false);
+    plotter(&mut plot, "Ranges", "Measured", &est_r, true);
+    plot.show();
+
+    let mut plot = Plot::new();
+    plotter(&mut plot, "Azimuths", "Actual", &actual_b, false);
+    plotter(&mut plot, "Azimuths", "Measured", &est_b, true);
+    plot.show();
+
+    let mut plot = Plot::new();
+    plotter(&mut plot, "Measurement Updates", "X Velocity", &x_vel, false);
+    plotter(&mut plot, "Measurement Updates", "Y Velocity", &y_vel, false);
+    plot.show();
+
+    let mut plot = Plot::new();
+    plotter(&mut plot, "X Position Estimate Error Containment", "Estimate", &ex, true);
+    plotter(&mut plot, "X Position Estimate Error Containment", "Positive 3 sigma", &e_x_3sig, false);
+    plotter(&mut plot, "X Position Estimate Error Containment", "Negative 3 sigma", &ne_x_3sig, false);
+    plot.show();
+
+    let mut plot = Plot::new();
+    plotter(&mut plot, "Y Position Estimate Error Containment", "Estimate", &ey, true);
+    plotter(&mut plot, "Y Position Estimate Error Containment", "Positive 3 sigma", &e_y_3sig, false);
+    plotter(&mut plot, "Y Position Estimate Error Containment", "Negative 3 sigma", &ne_y_3sig, false);
+    plot.show();
+}
+
+fn plotter(plot: &mut Plot, title: &str, label: &str, ya: &Vec<f64>, scatter: bool) {
+    let xa: Vec<f64> = (0..ya.len()).map(|i| i as f64).collect();
+    let trace = Scatter::new(xa.to_vec(), ya.to_vec())
+        .name(label)
+        .mode(if scatter { Mode::Markers } else { Mode::Lines });
+    plot.add_trace(trace);
+    plot.set_layout(Layout::new().title(Title::new(title)));
 }

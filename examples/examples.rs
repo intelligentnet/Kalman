@@ -145,7 +145,7 @@ fn main() {
             if scale < 0.000000001 { scale = 0.000000001 };
         }
         });
-    println!("Model {} for {} steps, scaled by {}", model, num_steps, scale);
+    //println!("Model {} for {} steps, scaled by {}", model, num_steps, scale);
 
     let ground_truth_states = model_select(model, num_steps);
 
@@ -197,7 +197,7 @@ fn main() {
     let mut plot = Plot::new();
 
     if with_gt {
-        plotter(&mut plot, "Ground Truth", &ground_truth_states, !scatter);
+        plotter(&mut plot, "Ground Truth", &ground_truth_states, scatter);
     }
     if with_motion {
         plotter(&mut plot, "Motion Values", &motion_states, !scatter);
