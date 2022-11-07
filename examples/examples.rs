@@ -126,16 +126,23 @@ fn model_select(model: &str, n: usize) -> Vec<Array1<f64>> {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let mut num_steps = 10;
+    let mut num_steps = 20;
     let mut scale: f64 = 1.0;
     let mut model = "line";
+    let mut with_gt = false;
+    let mut with_motion = false;
+    let mut scatter = false;
     // Unpack args
     args.iter().for_each(|s| match s.as_str() {
         "line" | "sine" | "parabola" | "bitcoin" => model = s,
+        "gt" => with_gt = true,
+        "motion" => with_motion = true,
+        "scatter" => scatter = true,
         s => if s.starts_with("n=") {
             num_steps = s[2 ..].parse().unwrap()
         } else if s.starts_with("scale=") {
             scale = s[6 ..].parse().unwrap();
+            if scale < 0.000000001 { scale = 0.000000001 };
         }
         });
     println!("Model {} for {} steps, scaled by {}", model, num_steps, scale);
@@ -189,10 +196,14 @@ fn main() {
     // Plot results
     let mut plot = Plot::new();
 
-    //plotter(&mut plot "Ground Truth", &ground_truth_states, false);
-    //plotter(&mut plot "Motion Values", &motion_states, false);
-    plotter(&mut plot, "Measured Values", &measured_states, false);
-    plotter(&mut plot, "Filtered Values", &filtered_states, true);
+    if with_gt {
+        plotter(&mut plot, "Ground Truth", &ground_truth_states, !scatter);
+    }
+    if with_motion {
+        plotter(&mut plot, "Motion Values", &motion_states, !scatter);
+    }
+    plotter(&mut plot, "Measured Values", &measured_states, !scatter);
+    plotter(&mut plot, "Filtered Values", &filtered_states, scatter);
 
     plot.show();
  
