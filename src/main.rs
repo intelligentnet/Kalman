@@ -1,4 +1,4 @@
-use ndarray::prelude::*;
+//use ndarray::prelude::*;
 //use crate::inverse::*;
 
 fn main() {

@@ -22,6 +22,10 @@ Some next steps are :
 
 Baby steps.
 
+Version 0.1.1 now includes ch6_new.rs which is a simplified version of the chapter 6 code without the first and second explicit steps. 
+
+New versions of these examples using a common linear library and an unscented kalman filter library will soon be available. With additional example to illustrate the different approaches and the use of control inputs and multiple measurement inputs. These will be placed in a separate repository and a link supplied when available. 
+
 #############################################################################
 
 There is a new program in examples. This is an extra and not part of the book.

@@ -4,17 +4,30 @@ use rand::prelude::*;
 use rand_distr::Normal;
 use num_traits::Float;
 extern crate plotly;
-use plotly::common::Mode;
-use plotly::{Plot, Scatter};
+use plotly::{
+        common::{Mode, Title},
+        layout::Layout,
+        Plot, Scatter,
+    };
 use std::env;
 
-fn plotter(plot: &mut Plot, label: &str, states: &Vec<Array1<f64>>, scatter: bool) {
+fn plotter_y(plot: &mut Plot, title: &str, label: &str, ya: &Vec<f64>, scatter: bool) {
+    let xa: Vec<f64> = (0..ya.len()).map(|i| i as f64).collect();
+    let trace = Scatter::new(xa.to_vec(), ya.to_vec())
+        .name(label)
+        .mode(if scatter { Mode::Markers } else { Mode::Lines });
+    plot.add_trace(trace);
+    plot.set_layout(Layout::new().title(Title::new(title)));
+}
+
+fn plotter(plot: &mut Plot, title: &str, label: &str, states: &Vec<Array1<f64>>, scatter: bool) {
     let xa: Vec<f64> = states.iter().map(|i| i[0]).collect();
     let ya: Vec<f64> = states.iter().map(|i| i[1]).collect();
     let trace = Scatter::new(xa.to_vec(), ya.to_vec())
         .name(label)
         .mode(if scatter { Mode::Markers } else { Mode::Lines });
     plot.add_trace(trace);
+    plot.set_layout(Layout::new().title(Title::new(title)));
 }
 
 fn linspace<T: Float + std::convert::From<i16> + std::fmt::Debug>(l: T, h: T, n: usize) -> Vec<T> {
@@ -27,7 +40,7 @@ fn linspace<T: Float + std::convert::From<i16> + std::fmt::Debug>(l: T, h: T, n:
     (low ..= high).map(|i| { dx * (i as i16).try_into().unwrap() }).collect()
 }
 
-// Generate motion data from ground truth by adding noise
+// Generate noisy data from other by adding noise
 fn gen_noisy_states(gt: &Vec<Array1<f64>>, stdev: &Array2<f64>) -> Vec<Array1<f64>> {
     // Must be diagonal matrix! i,e xl == yl
     let s = stdev.raw_dim();
@@ -47,9 +60,9 @@ fn gen_noisy_states(gt: &Vec<Array1<f64>>, stdev: &Array2<f64>) -> Vec<Array1<f6
     }).collect()
 }
 
-fn predict(ma: &Array2<f64>, mb: &Array2<f64>, mq: &Array2<f64>, u_t: &Array1<f64>, mu_t: &Array1<f64>, sigma_t: &Array2<f64>) -> (Array1<f64>, Array2<f64>) {
-    let predicted_mu = ma.dot(mu_t) + mb.dot(u_t);
-    let predicted_sigma = ma.dot(&sigma_t.dot(&ma.t())) + mq;
+fn predict(ma: &Array2<f64>, mb: &Array2<f64>, mq: &Array2<f64>, ctl: &Array1<f64>, mx: &Array1<f64>, mp: &Array2<f64>) -> (Array1<f64>, Array2<f64>) {
+    let predicted_mu = ma.dot(mx) + mb.dot(ctl);
+    let predicted_sigma = ma.dot(mp).dot(&ma.t()) + mq;
 
     (predicted_mu, predicted_sigma)
 }
@@ -68,12 +81,12 @@ fn update(gain: &Array2<f64>, z: &Array1<f64>, mh: &Array2<f64>, predicted_mu: &
     (updated_mu, updated_sigma)
 }
 
-fn filter(offset: &Array1<f64>, mz: &Vec<Array1<f64>>, mx: &mut Array1<f64>, mp: &mut Array2<f64>, ma: &Array2<f64>, mb: &Array2<f64>, mh: &Array2<f64>, mr: &Array2<f64>, mq: &Array2<f64>) -> Vec<Array1<f64>> {
+fn filter(ctl: &Array1<f64>, mz: &Vec<Array1<f64>>, mx: &mut Array1<f64>, mp: &mut Array2<f64>, ma: &Array2<f64>, mb: &Array2<f64>, mh: &Array2<f64>, mr: &Array2<f64>, mq: &Array2<f64>) -> Vec<Array1<f64>> {
         mz.iter()
         .map(|z| {
-            let (mu, sigma) = predict(&ma, &mb, &mq, &offset, &mx, &mp);
-            let gain = kalman_gain(&mh, &mr, &sigma);
-            (*mx, *mp) = update(&gain, &z, &mh, &mu, &sigma);
+            let (mx_prime, mp_prime) = predict(&ma, &mb, &mq, &ctl, &mx, &mp);
+            let mk = kalman_gain(&mh, &mr, &mp_prime);
+            (*mx, *mp) = update(&mk, &z, &mh, &mx_prime, &mp_prime);
 
             mx.clone()
         })
@@ -128,6 +141,8 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let mut num_steps = 20;
     let mut scale: f64 = 1.0;
+    let mut xh: f64 = 1.0;
+    let mut yh: f64 = 1.0;
     let mut model = "line";
     let mut with_gt = false;
     let mut with_motion = false;
@@ -143,8 +158,13 @@ fn main() {
         } else if s.starts_with("scale=") {
             scale = s[6 ..].parse().unwrap();
             if scale < 0.000000001 { scale = 0.000000001 };
-        }
-        });
+        } else if s.starts_with("xh=") {
+            xh = s[3 ..].parse().unwrap();
+            if xh < 0.000000001 { xh = 0.000000001 };
+        } else if s.starts_with("yh=") {
+            yh = s[3 ..].parse().unwrap();
+            if yh < 0.000000001 { yh = 0.000000001 };
+        }});
     //println!("Model {} for {} steps, scaled by {}", model, num_steps, scale);
 
     let ground_truth_states = model_select(model, num_steps);
@@ -178,12 +198,13 @@ fn main() {
     let ma = Array2::<f64>::eye(2); // Scale each data item
     let mb = Array2::<f64>::eye(2); // Offet scaling for each data item
     let mh = Array2::<f64>::eye(2); // State to measurement scale
+    //let mh: Array2<f64> = array![[1.0, yh], [xh, 1.0]]; // State to measurement scale
     let initial_rate_of_change_x = 0.1;
     let initial_rate_of_change_y = 0.1;
     let mut sigma_current = array![[initial_rate_of_change_x, 0.0],
                                    [0.0, initial_rate_of_change_y]];
-    // Offsets - if any
-    let offset = array![0.0, 0.0];
+    // Control inputs - if any
+    let ctl = array![0.0, 0.0];
 
     // Initialise Average and covariance
     let mut mu_current = array![measured_states[0][0],
@@ -191,19 +212,19 @@ fn main() {
 
     // Now run Kalman Filter for each time step on measured states
     let filtered_states: Vec<Array1<f64>> =
-       filter(&offset, &measured_states, &mut mu_current, &mut sigma_current, &ma, &mb, &mh, &mr, &mq);
+       filter(&ctl, &measured_states, &mut mu_current, &mut sigma_current, &ma, &mb, &mh, &mr, &mq);
 
     // Plot results
     let mut plot = Plot::new();
 
     if with_gt {
-        plotter(&mut plot, "Ground Truth", &ground_truth_states, scatter);
+        plotter(&mut plot, "Shape fitter", "Ground Truth", &ground_truth_states, scatter);
     }
     if with_motion {
-        plotter(&mut plot, "Motion Values", &motion_states, !scatter);
+        plotter(&mut plot, "Shape fitter", "Motion Values", &motion_states, !scatter);
     }
-    plotter(&mut plot, "Measured Values", &measured_states, !scatter);
-    plotter(&mut plot, "Filtered Values", &filtered_states, scatter);
+    plotter(&mut plot, "Shape fitter", "Measured Values", &measured_states, !scatter);
+    plotter(&mut plot, "Shape fitter", "Filtered Values", &filtered_states, scatter);
 
     plot.show();
  
@@ -213,7 +234,7 @@ fn main() {
     let start = std::time::Instant::now();
 
     for _ in 0 .. 100000 {
-        _filtered_states = filter(&offset, &measured_states, &mut mu_current, &mut sigma_current, &ma, &mb, &mh, &mr, &mq);
+        _filtered_states = filter(&ctl, &measured_states, &mut mu_current, &mut sigma_current, &ma, &mb, &mh, &mr, &mq);
     }
 
     println!("Time taken: {:?}", start.elapsed());

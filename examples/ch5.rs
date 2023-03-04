@@ -43,8 +43,7 @@ struct Filter {
     a: Array2<f64>,
     b: Array2<f64>,
     h: Array2<f64>,
-    ht: Array2<f64>,
-    r: f64,
+    r: Array2<f64>,
     q: Array2<f64>,
 }
 
@@ -56,8 +55,7 @@ impl Filter {
         let a = array![[1.0, dt], [0.0, 1.0]];
         let b = array![[0.0, 0.0], [0.0, 0.0]];
         let h = array![[1.0, 0.0]];
-        let ht = h.t().to_owned();
-        let r = 10.0;
+        let r = array![[10.0]];
         let q = array![[1.0, 0.0], [0.0, 3.0]];
 
         Filter {
@@ -66,7 +64,6 @@ impl Filter {
             a,
             b,
             h,
-            ht,
             r,
             q,
         }
@@ -89,8 +86,8 @@ impl Filter {
         let p_prime = self.a.dot(&self.p).dot(&self.a.t()) + &self.q;
 
         // Compute Kalman Gain
-        let s = self.h.dot(&p_prime).dot(&self.ht) + self.r;
-        let k = p_prime.dot(&self.ht).dot(&s.inv().unwrap());
+        let s = self.h.dot(&p_prime).dot(&self.h.t()) + &self.r;
+        let k = p_prime.dot(&self.h.t()).dot(&s.inv().unwrap());
 
         // Estimate new State
         self.x = &x_prime + &k * (z - h(&self.h, &x_prime));
